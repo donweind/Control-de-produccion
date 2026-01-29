@@ -105,10 +105,7 @@ const ImageCardElement = React.memo(({ point, isSelected, onMouseDown, onDoubleC
             onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e, point.id); }}
             onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(e, point.id); }}
         >
-            {/* DISEÑO DE TARJETA INTELIGENTE:
-               1. Estado Normal: Cuadrado limpio con imagen (w-28 h-28), sin textos grandes que molesten.
-               2. Estado Hover: Se expande a w-80, muestra imagen grande y detalles completos.
-            */}
+            {/* DISEÑO DE TARJETA INTELIGENTE */}
             <div className={`
                 bg-white rounded-xl shadow-lg border-2 border-white overflow-hidden 
                 transition-all duration-300 origin-center
@@ -190,21 +187,47 @@ const MarkerElement = React.memo(({ point, isSelected, readOnly, onMouseDown, on
   const displayBg = isDotted ? (point.markerColor || MATTE_OPTIONS.light[0]) : (point.markerColor || config.bg);
   const displayText = point.textColor || config.text;
   
-  const containerStyle = isDotted ? {
-    backgroundColor: displayBg, color: displayText, border: `2px dotted ${displayText}`, width: `${BASE_MARKER_SIZE_PX}px`, height: `${BASE_MARKER_SIZE_PX}px`, borderRadius: '50%', whiteSpace: 'nowrap'
-  } : {
-    backgroundColor: point.markerColor || config.bg, color: point.textColor || config.text, width: `${BASE_MARKER_SIZE_PX}px`, height: `${BASE_MARKER_SIZE_PX}px`, borderRadius: config.radius, border: config.border, boxShadow: isSelected ? '0 10px 15px rgba(0,0,0,0.3)' : '0 4px 6px rgba(0,0,0,0.1)', whiteSpace: 'nowrap'
-  };
+  // Calcular dimensiones reales en píxeles
+  const baseSize = 24;
+  const width = baseSize * (point.scaleX || 1);
+  const height = baseSize * (point.scaleY || 1);
 
-  const fontSize = point.markerFontSize || 10;
+  // Lógica inteligente para tamaño de fuente que permite MULTI-LÍNEA
+  const text = point.innerText || '';
+  const length = text.length;
+  
+  // Área aproximada disponible para texto (80% del cuadro)
+  const availableArea = width * height * 0.8;
+  
+  // Cálculo heurístico: Tamaño = Raíz cuadrada de (Área disponible / caracteres)
+  // Esto asume una distribución cuadrada ideal, ajustada luego
+  let dynamicFontSize = length > 0 ? Math.sqrt(availableArea / length) : 0;
+  
+  // Ajustes de seguridad
+  const maxFont = Math.min(height * 0.7, width * 0.8); // No más grande que el contenedor
+  const minFont = 8; // Mínimo legible
+  
+  // Ajuste fino: si es texto corto, permitimos fuente más grande, si es largo, reduce
+  if(length <= 2) dynamicFontSize = Math.min(height * 0.6, width * 0.6); // 1-2 chars
+  else if(length <= 5) dynamicFontSize = Math.min(height * 0.45, width * 0.45); // 3-5 chars
+  else dynamicFontSize = dynamicFontSize * 0.9; // Texto largo multi-línea
+
+  dynamicFontSize = Math.min(Math.max(dynamicFontSize, minFont), maxFont);
+
+  const containerStyle = isDotted ? {
+    backgroundColor: displayBg, color: displayText, border: `2px dotted ${displayText}`, width: `${width}px`, height: `${height}px`, borderRadius: '50%', 
+    whiteSpace: 'normal', wordBreak: 'break-word', textAlign: 'center', lineHeight: '1.1' // Permite wrap
+  } : {
+    backgroundColor: point.markerColor || config.bg, color: point.textColor || config.text, width: `${width}px`, height: `${height}px`, borderRadius: config.radius, border: config.border, boxShadow: isSelected ? '0 10px 15px rgba(0,0,0,0.3)' : '0 4px 6px rgba(0,0,0,0.1)', 
+    whiteSpace: 'normal', wordBreak: 'break-word', textAlign: 'center', lineHeight: '1.1' // Permite wrap
+  };
 
   return (
     <ElementWrapper point={point} isSelected={isSelected} readOnly={readOnly} onMouseDown={onMouseDown} onDoubleClick={onDoubleClick}>
-      <div style={{ transform: `scale(${point.scaleX || 1}, ${point.scaleY || 1})` }}>
-        <div className="flex items-center justify-center font-bold overflow-hidden shadow-sm transition-shadow duration-300" 
-             style={{...containerStyle, fontSize: `${fontSize}px`}}> 
-          {/* ELIMINADO: Ya no mostramos la etiqueta dentro del cuadrado */}
-        </div>
+      <div className="flex items-center justify-center font-bold overflow-hidden shadow-sm transition-all duration-200" 
+           style={{...containerStyle, fontSize: `${dynamicFontSize}px`, padding: '2px'}}> 
+        {/* Renderizado directo del texto adaptado */}
+        {text}
       </div>
     </ElementWrapper>
   );
@@ -446,7 +469,7 @@ export default function App() {
   /* --- LÓGICA DE NAVEGACIÓN Y LOGIN --- */
   const handleLoginSubmit = (e) => {
     e.preventDefault();
-    if (password === '112358') {
+    if (password === '202701') {
       setIsAdmin(true);
       setCurrentScreen('editor');
       setLoginError(false);
@@ -798,19 +821,12 @@ export default function App() {
     const nextNum = points.filter(p => p.type === 'marker').length + 1;
     const base = { id: Date.now(), x: ((e.clientX-r.left)/r.width)*100, y: ((e.clientY-r.top)/r.height)*100, label: `Punto ${nextNum}`, image: null, description: '', priority: 'A', status: 'process' };
     
-    let newItem;
-    if (tool === 'safety') {
-        newItem = { ...base, type: 'safety', label: '!', safetyType: 'warning', scaleX: 1.5, scaleY: 1.5, markerColor: SAFETY_ICONS.warning.bg, textColor: SAFETY_ICONS.warning.defaultColor, title: 'Señal de Seguridad' };
-    } else if (tool === 'text') {
-        newItem = { ...base, type: 'text', label: 'Texto', fontSize: 14, fontFamily: 'sans', isBold: true, isItalic: false, color: '#1f2937' };
-    } else {
-        // AQUI CAMBIA: Por defecto estilo 'blue' (Azul)
-        newItem = { ...base, type: 'marker', label: `${nextNum}`, style: 'blue', scaleX: 1, scaleY: 1, markerFontSize: 10, textColor: '#ffffff', markerColor: MARKER_STYLES.blue.bg };
-    }
+    const newItem = { ...base, type: 'marker', label: `${nextNum}`, style: 'blue', scaleX: 1, scaleY: 1, markerFontSize: 10, textColor: '#ffffff', markerColor: MARKER_STYLES.blue.bg };
+    
     setPointsForLevel(prev => [...prev, newItem]); setSelectedPointId(newItem.id);
   };
 
-  const visiblePoints = points; // Simplificado: Siempre muestra todos los puntos
+  const visiblePoints = points; 
 
   /* --- RENDERS --- */
 
@@ -942,21 +958,13 @@ export default function App() {
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-2">Herramientas</span>
                     <div className="flex bg-white rounded-lg border border-gray-200 p-0.5 shadow-sm">
-                        {[{id: 'marker', icon: MapIcon, label: 'Marcador'},{id: 'text', icon: Type, label: 'Texto'},{id: 'safety', icon: TriangleAlert, label: 'Seguridad'}].map(t => (
-                            <button key={t.id} onClick={() => setTool(t.id)} className={`px-3 py-1.5 rounded-md flex items-center gap-2 text-xs font-semibold transition-all ${tool === t.id ? 'bg-black text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}><t.icon size={14}/> {t.label}</button>
-                        ))}
+                        <button onClick={() => setTool('marker')} className={`px-3 py-1.5 rounded-md flex items-center gap-2 text-xs font-semibold transition-all ${tool === 'marker' ? 'bg-black text-white shadow-sm' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50'}`}><MapIcon size={14}/> Marcador</button>
                     </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-2">Datos</span>
-                    <button onClick={() => setShowBulkImportModal(true)} className="px-3 py-1.5 rounded-md text-xs font-medium bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 flex items-center gap-2" title="Importar lista de puntos"><FileText size={14} /> Importar Datos</button>
                 </div>
 
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-2">Archivo</span>
                     <div className="flex gap-1">
-                        <button onClick={() => mapInputRef.current?.click()} className="px-3 py-1.5 rounded-md text-xs font-medium bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 flex items-center gap-2" title="Cargar Nueva Imagen de Fondo"><FileImage size={14} /> Cargar Imagen</button>
                         <button onClick={() => fileInputRef.current?.click()} className="px-3 py-1.5 rounded-md text-xs font-medium bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 flex items-center gap-2" title="Cargar JSON"><FolderOpen size={14} /> Cargar JSON</button>
                         <button onClick={handleExportProject} className="px-3 py-1.5 rounded-md text-xs font-medium bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 flex items-center gap-2" title="Descargar Proyecto JSON"><DownloadIcon size={14} /> Descargar JSON</button>
                         <div className="w-px h-6 bg-gray-300 mx-1"></div>
@@ -967,7 +975,6 @@ export default function App() {
         )}
       </header>
 
-      {/* SELECTOR FLOTANTE DE PISOS (Option A) */}
       {mapImage && Object.keys(levels).length > 1 && (
         <div className={`absolute right-6 top-32 flex flex-col gap-2 z-50 ${isViewer ? 'text-white' : ''}`}>
              <div className="bg-black/90 text-white rounded-xl shadow-xl p-1.5 flex flex-col gap-1 border border-white/10 backdrop-blur-sm">
@@ -1014,10 +1021,6 @@ export default function App() {
           </div>
       )}
 
-      {/* MODIFICACIÓN MODO "ALL": ELIMINADA LA GALERÍA EXTERNA. 
-         AHORA USA EL MAPA PRINCIPAL CON LA LÓGICA DE TARJETAS INTELIGENTES.
-      */}
-
       <div className="flex flex-1 overflow-hidden relative h-full">
         {isAdmin && !adminPreviewMode && (
           <aside className="w-72 bg-white border-r border-gray-100 flex flex-col z-30 shadow-[4px_0_24px_rgba(0,0,0,0.02)] relative h-full">
@@ -1047,11 +1050,8 @@ export default function App() {
                     <button onClick={() => deletePoint(selectedPointId)} className="text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
                   </div>
                   
-                  {/* --- SECCION PERSONALIZADA SIMPLIFICADA --- */}
-                  
                   {points.find(p => p.id === selectedPointId)?.type === 'marker' && (
                     <div className="space-y-4">
-                        {/* 1. NOMBRE / ETIQUETA */}
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nombre del Punto</label>
                             <input 
@@ -1063,7 +1063,17 @@ export default function App() {
                             />
                         </div>
 
-                        {/* 2. CÓDIGO */}
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Texto Interior</label>
+                            <input 
+                                type="text" 
+                                className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                                placeholder="Ej: A-01"
+                                value={points.find(p => p.id === selectedPointId)?.innerText || ''} 
+                                onChange={(e) => updatePoint(selectedPointId, 'innerText', e.target.value)} 
+                            />
+                        </div>
+
                         <div className="space-y-1">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1"><FileBadge size={10}/> Código</label>
                             <input 
@@ -1075,7 +1085,6 @@ export default function App() {
                             />
                         </div>
 
-                        {/* 3. IMAGEN */}
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1"><ImageIcon size={10}/> Imagen</label>
                             {!points.find(p => p.id === selectedPointId)?.image ? (
@@ -1098,7 +1107,6 @@ export default function App() {
                             )}
                         </div>
 
-                        {/* EXTRAS: DESCRIPCIÓN Y AJUSTES VISUALES (Simplificado) */}
                         <div className="pt-4 border-t border-gray-100 space-y-3">
                              <div className="space-y-1">
                                 <label className="text-[10px] font-bold text-gray-400 uppercase">Descripción (Opcional)</label>
@@ -1113,7 +1121,6 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* MANTENEMOS LÓGICA PARA TEXTO Y SEGURIDAD SI SE USAN */}
                   {points.find(p => p.id === selectedPointId)?.type === 'text' && (
                     <>
                       <div className="space-y-1"><label className="text-[10px] font-bold text-gray-400 uppercase">Contenido</label><input type="text" className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm" value={points.find(p => p.id === selectedPointId)?.label || ''} onChange={(e) => updatePoint(selectedPointId, 'label', e.target.value)} /></div>
@@ -1156,18 +1163,16 @@ export default function App() {
           </aside>
         )}
         
-        {/* MAP CONTAINER */}
         <main 
             className={`flex-1 relative overflow-hidden select-none ${isViewer ? 'bg-white' : 'bg-gray-100/50'}`} 
             ref={containerRef} 
-            // Apply cursor style directly
             style={{ cursor: isPanning ? cursorGrabbing : (tool === 'text' && isAdmin && !adminPreviewMode ? 'text' : cursorGrab) }}
             onMouseDown={(e) => { 
                 if (!mapImage || draggingElementId) return; 
                 setIsPanning(true); 
                 setStartPan({ x: e.clientX - pan.x, y: e.clientY - pan.y }); 
             }} 
-            onClick={() => setSelectedPointId(null)} // Click al fondo cierra el panel
+            onClick={() => setSelectedPointId(null)} 
             onWheel={handleWheel}
         >
           {!mapImage ? (
@@ -1179,7 +1184,7 @@ export default function App() {
               <div style={{ position: 'relative' }}>
                 <MapContent 
                     mapImage={mapImage}
-                    imgRef={imgRef} // Pasar el ref aquí
+                    imgRef={imgRef} 
                     points={visiblePoints}
                     selectedPointId={selectedPointId}
                     isReadOnly={isReadOnly}
